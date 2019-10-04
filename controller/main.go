@@ -2,14 +2,18 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
+	"regexp"
 	"text/template"
 	"time"
 	"web/models"
+
+	"golang.org/x/crypto/bcrypt"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -54,15 +58,23 @@ func login(w http.ResponseWriter, r *http.Request) error {
 
 	if r.Method == "POST" {
 
+		re := regexp.MustCompile("^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$")
+
 		email := r.FormValue("email")
 		pass := r.FormValue("psw")
 
 		if len(email) == 0 || len(pass) == 0 {
 
-			io.WriteString(w, "Error in input value")
+			return errors.New("Error in the input fields")
+
+			//io.WriteString(w, "Error in input value")
 		}
 
-		fmt.Println(email)
+		if re.MatchString(email) == false {
+
+			return errors.New("Invalid Email format")
+		}
+
 		filter := bson.D{{"email", email}}
 
 		var result models.CreateUsers
@@ -73,8 +85,15 @@ func login(w http.ResponseWriter, r *http.Request) error {
 
 		if err != nil {
 
-			//message := "User is not registered"
+			err = t.ExecuteTemplate(w, "login.gohtml", err)
+			return err
+		}
 
+		err = bcrypt.CompareHashAndPassword(result.Psw, []byte(pass))
+		fmt.Println(result.Psw, []byte(pass), err)
+
+		if err != nil {
+			err = errors.New("Password is not correct")
 			err = t.ExecuteTemplate(w, "login.gohtml", err)
 			return err
 		}
@@ -92,8 +111,6 @@ func login(w http.ResponseWriter, r *http.Request) error {
 
 		}
 
-		//w.Header().Set("location", "/orgs")
-		//w.WriteHeader(http.StatusSeeOther)
 		err = t.ExecuteTemplate(w, "index.gohtml", nil)
 		return err
 	}
@@ -106,8 +123,6 @@ func login(w http.ResponseWriter, r *http.Request) error {
 
 func CreateUser(w http.ResponseWriter, r *http.Request) error {
 
-	//fmt.Println(r.Method)
-
 	if r.Method == "POST" {
 
 		r.ParseForm()
@@ -118,12 +133,6 @@ func CreateUser(w http.ResponseWriter, r *http.Request) error {
 
 		UUID := uuid.NewSHA1(namespace, []byte(uname))
 
-		//var body cu
-
-		//body, _ = ioutil.ReadAll(r.Body)
-
-		//json.Marshal(r.body)
-
 		fmt.Println(uname + "" + UUID.String())
 
 		uuid := ud{Email: uname, Uuid: UUID.String()}
@@ -133,24 +142,28 @@ func CreateUser(w http.ResponseWriter, r *http.Request) error {
 		_, err := collection.InsertOne(ctx, uuid)
 
 		if err != nil {
-			log.Fatal(err)
+			log.Println(err)
+			return err
 		}
 
 		collection = client.Database("test").Collection("Users")
 
-		user := cu{Fname: r.FormValue("fname"), Lname: r.FormValue("lname"), Psw: []byte(r.FormValue("psw")), Email: r.FormValue("email")}
+		pass, err := bcrypt.GenerateFromPassword([]byte(r.FormValue("psw")), bcrypt.MinCost)
+
+		if err != nil {
+			return err
+		}
+
+		user := cu{Fname: r.FormValue("fname"), Lname: r.FormValue("lname"), Psw: pass, Email: r.FormValue("email")}
 
 		_, err = collection.InsertOne(ctx, user)
 		if err != nil {
 			log.Fatal(err)
 		}
 
-		//fmt.Println(": ", insertResult.InsertedID)
-
 		io.WriteString(w, "Successfully registered")
 
-		//http.Redirect(w, r, "/orgs", http.StatusSeeOther)
-		return err
+		return nil
 	}
 
 	err := t.ExecuteTemplate(w, "login.gohtml", nil)
@@ -162,7 +175,7 @@ func CreateUser(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
-	return err
+	return nil
 }
 
 var t *template.Template
