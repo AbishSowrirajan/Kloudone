@@ -1,14 +1,26 @@
 <!DOCTYPE html>
 <html>
 <head>
+<style>
+footer a {
+  display:inline;
+  font-size: 18px;
+  font-weight:bold;
+  margin-right:1.5em;
+}
+</style>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <body>
    <h1> {{ .Post}}</h1>
+   <p>Replies : {{.Count}}</p>
    {{ range $key , $value := .Thread}}
    <div>
       <p>Comment : {{$value.Comment}}</p>
       <p>Posted By {{$value.Fname}} at {{$value.Posttime}}</p>
+      <footer>
       <a href="/{{$value.Fname}}/question/{{$value.Uuid}}/reply">Reply</a>
+      <a href="/{{$value.Fname}}/question/{{$value.Uuid}}/reply">Replies :{{$value.Count}}</a>
+      </footer>
       <br>
    </div>
    {{ end }}

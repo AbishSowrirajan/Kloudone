@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"strconv"
 	"text/template"
 	"time"
 
@@ -22,8 +23,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 )
-
-var orgs = []string{"Xendit", "Paypal", "Mastercard", "Visa"}
 
 type cu models.CreateUsers
 
@@ -41,8 +40,6 @@ type chanel struct {
 	Uuid  string
 	Error error
 }
-
-var c = make(chan chanel)
 
 type post struct {
 	Response error
@@ -70,41 +67,131 @@ func home(w http.ResponseWriter, r *http.Request) error {
 	return err
 }
 
-func updateCount(uuid string, ctx context.Context, result models.Reply) {
-
-	//c := make(chan int)
+func findRoot(uuid string, ctx context.Context, result models.Reply) chan chanel {
+	var ch = make(chan chanel)
 	var e error
-	for {
+	var mainpost models.Comments
+
+	go func() {
 
 		filter := bson.D{{"uuid", uuid}}
 
-		collection := client.Database("test").Collection("Reply")
+		collection := client.Database("test").Collection("Questions")
 
-		e = collection.FindOne(ctx, filter).Decode(&result)
+		e = collection.FindOne(ctx, filter).Decode(&mainpost)
 
-		filter = bson.D{{"uuid", uuid}}
+		rootid := mainpost.Uuid
 
-		update := bson.D{
-			{"$inc",
-				bson.D{
-					{"count", 1},
-				}},
-		}
-
-		_, e := collection.UpdateOne(ctx, filter, update)
 		if e != nil {
 
-			break
+			for {
+				fmt.Println(uuid)
+
+				filter := bson.D{{"uuid", uuid}}
+
+				collection := client.Database("test").Collection("Reply")
+
+				e = collection.FindOne(ctx, filter).Decode(&result)
+
+				if e != nil {
+					break
+				}
+
+				if result.ParentId == result.RootId {
+
+					break
+				}
+				uuid = result.ParentId
+
+			}
+			rootid = result.RootId
+
 		}
 
-		if result.ParentId == "0" {
+		ch <- chanel{rootid, e}
+		close(ch)
+	}()
+	return ch
+}
 
-			break
+func updateCount(uuid string, ctx context.Context, result models.Reply) chan chanel {
+
+	//c := make(chan int)
+	var ch = make(chan chanel)
+	var e error
+	var mainpost models.Comments
+
+	uid := uuid
+	go func() {
+
+		for {
+
+			fmt.Println("started", uid)
+
+			filter := bson.D{{"uuid", uid}}
+
+			collection := client.Database("test").Collection("Reply")
+
+			e = collection.FindOne(ctx, filter).Decode(&result)
+
+			fmt.Println(e)
+
+			if e != nil {
+				break
+			}
+			filter = bson.D{{"uuid", uid}}
+
+			update := bson.D{
+				{"$inc",
+					bson.D{
+						{"count", 1},
+					}},
+			}
+
+			_, e := collection.UpdateOne(ctx, filter, update)
+			if e != nil {
+
+				break
+			}
+
+			if result.ParentId == result.RootId {
+				uid = result.ParentId
+				break
+			}
+			uid = result.ParentId
+
 		}
+		fmt.Println("Ended", uid, result.ParentId)
+		if e != nil || result.ParentId == result.RootId {
 
-	}
-	c <- chanel{result.ParentId, e}
-	close(c)
+			filter := bson.D{{"uuid", uid}}
+
+			collection := client.Database("test").Collection("Questions")
+
+			e = collection.FindOne(ctx, filter).Decode(&mainpost)
+
+			filter = bson.D{{"uuid", uid}}
+
+			update := bson.D{
+				{"$inc",
+					bson.D{
+						{"count", 1},
+					}},
+			}
+
+			_, e := collection.UpdateOne(ctx, filter, update)
+			if e != nil {
+
+				e = errors.New("error in updating count of the document")
+			}
+
+		}
+		ch <- chanel{result.ParentId, e}
+		close(ch)
+	}()
+	fmt.Println("done", e)
+
+	return ch
 
 }
 
@@ -220,6 +307,7 @@ func postthread(w http.ResponseWriter, r *http.Request) error {
 
 	type replies struct {
 		Comment  string
+		Count    string
 		Fname    string
 		Uuid     string
 		Posttime string
@@ -227,6 +315,7 @@ func postthread(w http.ResponseWriter, r *http.Request) error {
 
 	type pthread struct {
 		Post   string
+		Count  string
 		Uname  string
 		UUID   string
 		Thread []replies
@@ -260,6 +349,7 @@ func postthread(w http.ResponseWriter, r *http.Request) error {
 	var pt pthread
 
 	pt.Post = p
+	pt.Count = strconv.Itoa(int(mainpost.Count))
 	pt.Uname = uname
 	pt.UUID = uuid
 
@@ -291,6 +381,7 @@ func postthread(w http.ResponseWriter, r *http.Request) error {
 		}
 
 		th.Comment = result.Comment
+		th.Count = strconv.Itoa(int(result.Count))
 		th.Fname = result.Fname
 		th.Uuid = result.Uuid
 		th.Posttime = result.Posttime
@@ -319,6 +410,7 @@ func postcomment(w http.ResponseWriter, r *http.Request) error {
 
 	type replies struct {
 		Comment  string
+		Count    string
 		Fname    string
 		Uuid     string
 		Posttime string
@@ -326,18 +418,32 @@ func postcomment(w http.ResponseWriter, r *http.Request) error {
 
 	type pthread struct {
 		Post   string
+		Count  string
 		Uname  string
 		UUID   string
 		Thread []replies
 	}
 
 	var mainpost models.Comments
+	var RootID string
 
 	vars := mux.Vars(r)
-	rootID := vars["uid"]
+	uid := vars["uid"]
+	fmt.Println(uid)
 	fname := vars["username"]
 
-	results.ParentId = rootID
+	c := findRoot(uid, ctx, result)
+	rootID := ""
+	for v := range c {
+
+		if v.Error != nil {
+			return v.Error
+		}
+		rootID = v.Uuid
+
+	}
+
+	results.ParentId = uid
 	results.RootId = rootID
 	results.Fname = fname
 
@@ -363,16 +469,49 @@ func postcomment(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 
-	filter := bson.D{{"uuid", rootID}}
+	c = updateCount(uid, ctx, result)
+
+	for v := range c {
+		fmt.Println(v)
+		if v.Error != nil {
+			return v.Error
+		}
+		RootID = v.Uuid
+	}
+
+	fmt.Println("returned from go routuine")
+	if err != nil {
+
+		return errors.New("Server Error ")
+	}
+
+	filter := bson.D{{"uuid", RootID}}
+
+	update := bson.D{
+		{"$inc",
+			bson.D{
+				{"count", 1},
+			}},
+	}
+
+	_, err = collection.UpdateOne(ctx, filter, update)
+	if err != nil {
+		return err
+	}
+
+	//err = updateResult.Decode(&mainpost)
+
+	filter = bson.D{{"uuid", uid}}
 
 	collection = client.Database("test").Collection("Questions")
 
 	err = collection.FindOne(ctx, filter).Decode(&mainpost)
 
 	p := mainpost.Question
+	count := mainpost.Count
 	if err != nil {
 
-		filter := bson.D{{"uuid", rootID}}
+		filter := bson.D{{"uuid", uid}}
 
 		collection = client.Database("test").Collection("Reply")
 
@@ -382,14 +521,18 @@ func postcomment(w http.ResponseWriter, r *http.Request) error {
 			return err
 		}
 		p = result.Comment
+		count = result.Count
 
 	}
 
 	var pt pthread
 
+	fmt.Println(count, strconv.Itoa(int(count)))
+
 	pt.Post = p
+	pt.Count = strconv.Itoa(int(count))
 	pt.Uname = fname
-	pt.UUID = rootID
+	pt.UUID = vars["uid"]
 
 	//var results []models.Reply
 
@@ -397,7 +540,7 @@ func postcomment(w http.ResponseWriter, r *http.Request) error {
 
 	collection = client.Database("test").Collection("Reply")
 
-	filter = bson.D{{"parentid", rootID}}
+	filter = bson.D{{"parentid", uid}}
 
 	cur, err := collection.Find(ctx, filter, findOptions)
 
@@ -417,6 +560,7 @@ func postcomment(w http.ResponseWriter, r *http.Request) error {
 		}
 		fmt.Println(result)
 		th.Comment = result.Comment
+		th.Count = strconv.Itoa(int(result.Count))
 		th.Fname = result.Fname
 		th.Uuid = result.Uuid
 		th.Posttime = result.Posttime
@@ -445,6 +589,7 @@ func postreply(w http.ResponseWriter, r *http.Request) error {
 
 	type replies struct {
 		Comment  string
+		Count    string
 		Fname    string
 		Uuid     string
 		Posttime string
@@ -452,6 +597,7 @@ func postreply(w http.ResponseWriter, r *http.Request) error {
 
 	type pthread struct {
 		Post   string
+		Count  string
 		Uname  string
 		UUID   string
 		Thread []replies
@@ -483,6 +629,7 @@ func postreply(w http.ResponseWriter, r *http.Request) error {
 	var pt pthread
 
 	pt.Post = p
+	pt.Count = strconv.Itoa(int(result.Count))
 	pt.Uname = uname
 	pt.UUID = uuid
 
@@ -514,6 +661,7 @@ func postreply(w http.ResponseWriter, r *http.Request) error {
 		}
 
 		th.Comment = result.Comment
+		th.Count = strconv.Itoa(int(result.Count))
 		th.Fname = result.Fname
 		th.Uuid = result.Uuid
 		th.Posttime = result.Posttime
