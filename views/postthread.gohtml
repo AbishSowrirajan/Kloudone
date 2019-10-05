@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<body>
+   <h1> {{ .Post}}</h1>
+   {{ range $key , $value := .Thread}}
+   <div>
+      <p>Comment : {{$value.Comment}}</p>
+      <p>Posted By {{$value.Fname}} at {{$value.Posttime}}</p>
+      <a href="/{{$value.Fname}}/question/{{$value.Uuid}}/reply">Reply</a>
+      <br>
+   </div>
+   {{ end }}
+   <form action="/{{.Uname}}/{{.UUID}}/postcomment" method="post" id="usrform">
+    <textarea rows="4" cols="50" name="comment" form="usrform"></textarea>
+    <input type="hidden" name="uname" value="{{.Uname}}"> 
+    <input type="submit">
+   </form>
+</body>
+</html>

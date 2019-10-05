@@ -1,11 +1,10 @@
 package models
 
-type Reply struct {
+type Comments struct {
 	Fname    string `json : "fname" `
 	Uuid     string `json : "uuid" `
-	RootId   string `json : ""rootId`
-	ParentId string `json : "parentId"`
-	Comment  string `json : "comment"`
+	Email    string `json : "email"`
+	Question string `json : "question"`
 	Posttime string `json : "posttime"`
 	Count    int64  `json : "count"`
 }

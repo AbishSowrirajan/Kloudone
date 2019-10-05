@@ -11,7 +11,7 @@
 }
 
 .navbar a {
-  float: right;
+  float: center;
   font-size: 16px;
   color: white;
   text-align: center;
@@ -70,18 +70,8 @@
 <body>
 
 <div class="navbar">
-  <a href="/home">Home</a>
-  <a href="/aboutus">AboutUs</a>
-  <a href="/SignUp">SignUp</a>
-  <div class="dropdown">
-  <button class="dropbtn" onclick="myFunction()">Inventory
-    <i class="fa fa-caret-down"></i>
-  </button>
-  <div class="dropdown-content" id="myDropdown">
-    <a href="/Residential">Residential</a>
-    <a href="/Commersial">Commercial</a>
-  </div>
-  </div> 
+  <a href="{{.}}/postquestion">Post Question</a>
+  <a href="{{.}}/questions">Questions</a>
 </div>
 
 <script>

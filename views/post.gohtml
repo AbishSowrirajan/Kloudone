@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<body>
+   <form action="/{{.Uname}}/postquestion" method="post" id="usrform">
+   <textarea rows="4" cols="50" name="comment" form="usrform"></textarea>
+   <input type="hidden" name="uname" value="{{.Uname}}"> 
+  <input type="submit">
+</form>
+<div class="alert"> {{ .Response}} </div> 
+<br>
+</body>
+</html>

@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<body>
+   {{$Uname := .Uname}}
+   {{ range $key , $value := .Results }}
+   <div>
+      <a href="/{{$Uname}}/question/{{$value.Uuid}}">{{ $value.Question }}</a>
+      <p>Posted By {{$value.Fname}} at {{$value.Posttime}}</p>
+      <br>
+   </div>
+   {{ end }}
+</body>
+</html>
