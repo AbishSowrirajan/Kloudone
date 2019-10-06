@@ -1092,7 +1092,7 @@ func init() {
 
 	t = template.Must(template.ParseGlob("../views/*.gohtml"))
 
-	clientOptions := options.Client().ApplyURI("mongodb://localhost:27017")
+	clientOptions := options.Client().ApplyURI("mongodb://mongo-comment:27017/test")
 
 	ctx, _ = context.WithTimeout(context.Background(), 200*time.Second)
 

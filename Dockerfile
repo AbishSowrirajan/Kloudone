@@ -24,7 +24,7 @@ RUN go get	 "go.mongodb.org/mongo-driver/mongo/options"
 
 RUN go get	 "github.com/google/uuid"
 RUN go get	 "github.com/gorilla/mux"
-RUN go get   "github.com/AbishSowrirajan/Kloudone/models" 
+RUN go get   -v "github.com/AbishSowrirajan/Kloudone/models" 
 
 
 

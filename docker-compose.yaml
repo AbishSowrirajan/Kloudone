@@ -4,14 +4,15 @@ services:
     container_name: docker-node-mongo
     restart: always
     build: .
-    volumes:
-      - . /Kloudone/
     ports:
       - '8080:8080'
     links:
       - mongo-comment
   mongo-comment:
     container_name: mongo-comment
-    image: mongo
+    restart: always
+    image: mongo:latest  
     ports:
-      - '27017:27017'
+      - '27018:27017'
+    command: mongod 
+      
