@@ -14,6 +14,7 @@ type LoginDetails struct {
 }
 
 type Uuid struct {
-	Email string `json : "uname"`
+	Email string `json : "email"`
+	Fname string `json : "uname"`
 	Uuid  string `json : "Uuid"`
 }

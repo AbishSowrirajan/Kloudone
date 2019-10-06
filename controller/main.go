@@ -1,7 +1,6 @@
 package main
 
 import (
-	"Kloudone/models"
 	"context"
 	"errors"
 	"fmt"
@@ -14,14 +13,15 @@ import (
 	"text/template"
 	"time"
 
-	"golang.org/x/crypto/bcrypt"
-
+	//	"github.com/google/uuid"
+	//	"github.com/google/uuid"
+	"github.com/AbishSowrirajan/Kloudone/models"
+	"github.com/google/uuid"
+	"github.com/gorilla/mux"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
-
-	"github.com/google/uuid"
-	"github.com/gorilla/mux"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type cu models.CreateUsers
@@ -116,7 +116,6 @@ func findRoot(uuid string, ctx context.Context, result models.Reply) chan chanel
 
 func updateCount(uuid string, ctx context.Context, result models.Reply) chan chanel {
 
-	//c := make(chan int)
 	var ch = make(chan chanel)
 	var e error
 	var mainpost models.Comments
@@ -195,6 +194,80 @@ func updateCount(uuid string, ctx context.Context, result models.Reply) chan cha
 
 }
 
+func sessionManger(w http.ResponseWriter, r *http.Request) (bool, error) {
+	_, err := r.Cookie("_zbsid")
+
+	if err != nil {
+		log.Println(err)
+
+		return false, err
+	}
+
+	vars := mux.Vars(r)
+
+	uname := vars["username"]
+
+	findOptions := options.Find()
+	findOptions.SetLimit(10)
+	findOptions.SetSort(bson.D{{"posttime", 1}})
+
+	collection := client.Database("test").Collection("Sessions")
+
+	filter := bson.D{{"fname", uname}}
+
+	cur, err := collection.Find(ctx, filter, findOptions)
+
+	var session models.Sessions
+
+	if err != nil {
+		log.Println(err)
+		err = errors.New("Server Error")
+
+		err = t.ExecuteTemplate(w, "login.gohtml", err)
+
+		return false, err
+	}
+
+	for cur.Next(ctx) {
+
+		// create a value into which the single document can be decoded
+		err := cur.Decode(&session)
+		if err != nil {
+			log.Println(err)
+			err = errors.New("Server Error")
+
+			err = t.ExecuteTemplate(w, "login.gohtml", err)
+
+			return false, err
+		}
+
+	}
+
+	fmt.Println(session)
+
+	if err != nil {
+		log.Println(err)
+
+		return false, err
+	}
+
+	if session.LoggedIn == false {
+
+		return false, nil
+	}
+
+	currenttime := time.Now()
+	//s/essiontime := session.Posttime.Minute()
+
+	diff := currenttime.Sub(session.Posttime).Hours()
+
+	if diff > .05 {
+		return false, nil
+	}
+
+	return true, nil
+
+}
 func postquestion(w http.ResponseWriter, r *http.Request) error {
 
 	vars := mux.Vars(r)
@@ -203,7 +276,15 @@ func postquestion(w http.ResponseWriter, r *http.Request) error {
 
 	po := post{nil, uname}
 
+	valid, err := sessionManger(w, r)
+
+	if valid == false {
+		err = errors.New("Please login to continue")
+		err = t.ExecuteTemplate(w, "login.gohtml", err)
+		return err
+	}
 	if r.Method == "POST" {
+
 		comment := r.FormValue("comment")
 
 		if len(comment) == 0 {
@@ -222,6 +303,10 @@ func postquestion(w http.ResponseWriter, r *http.Request) error {
 		err := collection.FindOne(ctx, filter).Decode(&result)
 
 		if err != nil {
+			log.Println(err)
+			err = errors.New("Server Error")
+
+			err = t.ExecuteTemplate(w, "login.gohtml", err)
 
 			return err
 		}
@@ -239,16 +324,19 @@ func postquestion(w http.ResponseWriter, r *http.Request) error {
 
 		if err != nil {
 			log.Println(err)
+			err = errors.New("Server Error")
+
+			err = t.ExecuteTemplate(w, "login.gohtml", err)
+
 			return err
 		}
 
 		po.Response = errors.New("Question has been posted successfully")
 		err = t.ExecuteTemplate(w, "post.gohtml", po)
-		//http.Error(w, "error in login page", 404)
 		return err
 	}
 
-	err := t.ExecuteTemplate(w, "post.gohtml", po)
+	err = t.ExecuteTemplate(w, "post.gohtml", po)
 	return err
 }
 
@@ -260,9 +348,16 @@ func questions(w http.ResponseWriter, r *http.Request) error {
 	}
 	vars := mux.Vars(r)
 
+	valid, err := sessionManger(w, r)
+
+	if valid == false {
+		err = errors.New("Please login to continue")
+		err = t.ExecuteTemplate(w, "login.gohtml", err)
+		return err
+	}
+
 	var data q
 	data.Uname = vars["username"]
-	//var results []models.Comments
 
 	findOptions := options.Find()
 
@@ -273,6 +368,10 @@ func questions(w http.ResponseWriter, r *http.Request) error {
 	cur, err := collection.Find(ctx, filter, findOptions)
 
 	if err != nil {
+		log.Println(err)
+		err = errors.New("Server Error")
+
+		err = t.ExecuteTemplate(w, "login.gohtml", err)
 
 		return err
 	}
@@ -283,6 +382,11 @@ func questions(w http.ResponseWriter, r *http.Request) error {
 		var result models.Comments
 		err := cur.Decode(&result)
 		if err != nil {
+			log.Println(err)
+			err = errors.New("Server Error")
+
+			err = t.ExecuteTemplate(w, "login.gohtml", err)
+
 			return err
 		}
 
@@ -290,6 +394,11 @@ func questions(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	if err := cur.Err(); err != nil {
+		log.Println(err)
+		err = errors.New("Server Error")
+
+		err = t.ExecuteTemplate(w, "login.gohtml", err)
+
 		return err
 	}
 
@@ -297,8 +406,6 @@ func questions(w http.ResponseWriter, r *http.Request) error {
 	cur.Close(ctx)
 
 	err = t.ExecuteTemplate(w, "comments.gohtml", data)
-	fmt.Println(err)
-	//http.Error(w, "error in login page", 404)
 	return err
 
 }
@@ -324,9 +431,15 @@ func postthread(w http.ResponseWriter, r *http.Request) error {
 	vars := mux.Vars(r)
 
 	uname := vars["username"]
-	uuid := vars["uid"]
 
-	fmt.Println(uname, uuid)
+	valid, err := sessionManger(w, r)
+
+	if valid == false {
+		err = errors.New("Please login to continue")
+		err = t.ExecuteTemplate(w, "login.gohtml", err)
+		return err
+	}
+	uuid := vars["uid"]
 
 	var mainpost models.Comments
 
@@ -334,13 +447,15 @@ func postthread(w http.ResponseWriter, r *http.Request) error {
 
 	collection := client.Database("test").Collection("Questions")
 
-	err := collection.FindOne(ctx, filter).Decode(&mainpost)
+	err = collection.FindOne(ctx, filter).Decode(&mainpost)
 
 	p := mainpost.Question
 
-	fmt.Println(p)
-
 	if err != nil {
+		log.Println(err)
+		err = errors.New("Server Error")
+
+		err = t.ExecuteTemplate(w, "login.gohtml", err)
 
 		return err
 
@@ -353,8 +468,6 @@ func postthread(w http.ResponseWriter, r *http.Request) error {
 	pt.Uname = uname
 	pt.UUID = uuid
 
-	//var results []models.Reply
-
 	findOptions := options.Find()
 
 	collection = client.Database("test").Collection("Reply")
@@ -363,8 +476,11 @@ func postthread(w http.ResponseWriter, r *http.Request) error {
 
 	cur, err := collection.Find(ctx, filter, findOptions)
 
-	fmt.Println(err)
 	if err != nil {
+		log.Println(err)
+		err = errors.New("Server Error")
+
+		err = t.ExecuteTemplate(w, "login.gohtml", err)
 
 		return err
 
@@ -377,6 +493,11 @@ func postthread(w http.ResponseWriter, r *http.Request) error {
 		var th replies
 		err := cur.Decode(&result)
 		if err != nil {
+			log.Println(err)
+			err = errors.New("Server Error")
+
+			err = t.ExecuteTemplate(w, "login.gohtml", err)
+
 			return err
 		}
 
@@ -390,16 +511,18 @@ func postthread(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	if err := cur.Err(); err != nil {
+		log.Println(err)
+		err = errors.New("Server Error")
+
+		err = t.ExecuteTemplate(w, "login.gohtml", err)
+
 		return err
 	}
 
-	fmt.Println(pt)
-
 	// Close the cursor once finished
-	cur.Close(context.TODO())
+	cur.Close(ctx)
 
 	err = t.ExecuteTemplate(w, "postthread.gohtml", pt)
-	//http.Error(w, "error in login page", 404)
 	return err
 
 }
@@ -429,15 +552,28 @@ func postcomment(w http.ResponseWriter, r *http.Request) error {
 
 	vars := mux.Vars(r)
 	uid := vars["uid"]
-	fmt.Println(uid)
+
 	fname := vars["username"]
+
+	valid, err := sessionManger(w, r)
+
+	if valid == false {
+		err = errors.New("Please login to continue")
+		log.Println(err)
+		err = t.ExecuteTemplate(w, "login.gohtml", err)
+		return err
+	}
 
 	c := findRoot(uid, ctx, result)
 	rootID := ""
 	for v := range c {
 
 		if v.Error != nil {
-			return v.Error
+			log.Println(v.Error)
+			err = errors.New("Server Error")
+
+			err = t.ExecuteTemplate(w, "login.gohtml", err)
+			return err
 		}
 		rootID = v.Uuid
 
@@ -462,10 +598,14 @@ func postcomment(w http.ResponseWriter, r *http.Request) error {
 
 	collection := client.Database("test").Collection("Reply")
 
-	_, err := collection.InsertOne(ctx, results)
+	_, err = collection.InsertOne(ctx, results)
 
 	if err != nil {
 		log.Println(err)
+		err = errors.New("Server Error")
+
+		err = t.ExecuteTemplate(w, "login.gohtml", err)
+
 		return err
 	}
 
@@ -474,15 +614,22 @@ func postcomment(w http.ResponseWriter, r *http.Request) error {
 	for v := range c {
 		fmt.Println(v)
 		if v.Error != nil {
-			return v.Error
+			log.Println(v.Error)
+			err = errors.New("Server Error")
+
+			err = t.ExecuteTemplate(w, "login.gohtml", err)
+			return err
 		}
 		RootID = v.Uuid
 	}
 
-	fmt.Println("returned from go routuine")
 	if err != nil {
+		log.Println(err)
+		err = errors.New("Server Error")
 
-		return errors.New("Server Error ")
+		err = t.ExecuteTemplate(w, "login.gohtml", err)
+
+		return err
 	}
 
 	filter := bson.D{{"uuid", RootID}}
@@ -496,10 +643,12 @@ func postcomment(w http.ResponseWriter, r *http.Request) error {
 
 	_, err = collection.UpdateOne(ctx, filter, update)
 	if err != nil {
+		log.Println(err)
+		err = errors.New("Server Error")
+
+		err = t.ExecuteTemplate(w, "login.gohtml", err)
 		return err
 	}
-
-	//err = updateResult.Decode(&mainpost)
 
 	filter = bson.D{{"uuid", uid}}
 
@@ -518,6 +667,10 @@ func postcomment(w http.ResponseWriter, r *http.Request) error {
 		err = collection.FindOne(ctx, filter).Decode(&result)
 
 		if err != nil {
+			log.Println(err)
+			err = errors.New("Server Error")
+
+			err = t.ExecuteTemplate(w, "login.gohtml", err)
 			return err
 		}
 		p = result.Comment
@@ -527,14 +680,10 @@ func postcomment(w http.ResponseWriter, r *http.Request) error {
 
 	var pt pthread
 
-	fmt.Println(count, strconv.Itoa(int(count)))
-
 	pt.Post = p
 	pt.Count = strconv.Itoa(int(count))
 	pt.Uname = fname
 	pt.UUID = vars["uid"]
-
-	//var results []models.Reply
 
 	findOptions := options.Find()
 
@@ -545,6 +694,10 @@ func postcomment(w http.ResponseWriter, r *http.Request) error {
 	cur, err := collection.Find(ctx, filter, findOptions)
 
 	if err != nil {
+		log.Println(err)
+		err = errors.New("Server Error")
+
+		err = t.ExecuteTemplate(w, "login.gohtml", err)
 
 		return err
 	}
@@ -556,6 +709,10 @@ func postcomment(w http.ResponseWriter, r *http.Request) error {
 		var th replies
 		err := cur.Decode(&result)
 		if err != nil {
+			log.Println(err)
+			err = errors.New("Server Error")
+
+			err = t.ExecuteTemplate(w, "login.gohtml", err)
 			return err
 		}
 		fmt.Println(result)
@@ -569,23 +726,22 @@ func postcomment(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	if err := cur.Err(); err != nil {
+		log.Println(err)
+		err = errors.New("Server Error")
+
+		err = t.ExecuteTemplate(w, "login.gohtml", err)
 		return err
 	}
 
-	fmt.Println(pt)
-
 	// Close the cursor once finished
-	cur.Close(context.TODO())
+	cur.Close(ctx)
 
 	err = t.ExecuteTemplate(w, "postthread.gohtml", pt)
-	//http.Error(w, "error in login page", 404)
 	return err
 
 }
 
 func postreply(w http.ResponseWriter, r *http.Request) error {
-
-	//var results models.Reply
 
 	type replies struct {
 		Comment  string
@@ -608,19 +764,28 @@ func postreply(w http.ResponseWriter, r *http.Request) error {
 	uname := vars["username"]
 	uuid := vars["uid"]
 
-	fmt.Println(uname, uuid)
+	valid, err := sessionManger(w, r)
 
-	//var mai models.Reply
+	if valid == false {
+		err = errors.New("Please login to continue")
+		log.Println(err)
+		err = t.ExecuteTemplate(w, "login.gohtml", err)
+		return err
+	}
 
 	filter := bson.D{{"uuid", uuid}}
 
 	collection := client.Database("test").Collection("Reply")
 
-	err := collection.FindOne(ctx, filter).Decode(&result)
+	err = collection.FindOne(ctx, filter).Decode(&result)
 
 	p := result.Comment
 
 	if err != nil {
+		log.Println(err)
+		err = errors.New("Server Error")
+
+		err = t.ExecuteTemplate(w, "login.gohtml", err)
 
 		return err
 
@@ -633,8 +798,6 @@ func postreply(w http.ResponseWriter, r *http.Request) error {
 	pt.Uname = uname
 	pt.UUID = uuid
 
-	//var results []models.Reply
-
 	findOptions := options.Find()
 
 	collection = client.Database("test").Collection("Reply")
@@ -643,9 +806,11 @@ func postreply(w http.ResponseWriter, r *http.Request) error {
 
 	cur, err := collection.Find(ctx, filter, findOptions)
 
-	fmt.Println(err)
 	if err != nil {
+		log.Println(err)
+		err := errors.New("Server Error")
 
+		err = t.ExecuteTemplate(w, "login.gohtml", err)
 		return err
 
 	}
@@ -670,21 +835,21 @@ func postreply(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	if err := cur.Err(); err != nil {
+		log.Println(err)
+		err := errors.New("Server Error")
+
+		err = t.ExecuteTemplate(w, "login.gohtml", err)
+
 		return err
 	}
 
-	fmt.Println(pt)
-
 	// Close the cursor once finished
-	cur.Close(context.TODO())
+	cur.Close(ctx)
 
 	err = t.ExecuteTemplate(w, "postthread.gohtml", pt)
-	//http.Error(w, "error in login page", 404)
 	return err
 }
 func login(w http.ResponseWriter, r *http.Request) error {
-
-	//fmt.Println(r.Method)
 
 	if r.Method == "POST" {
 
@@ -695,14 +860,23 @@ func login(w http.ResponseWriter, r *http.Request) error {
 
 		if len(email) == 0 || len(pass) == 0 {
 
-			return errors.New("Error in the input fields")
+			err := errors.New("Error in the input fields")
+			log.Println(err)
 
-			//io.WriteString(w, "Error in input value")
+			err = t.ExecuteTemplate(w, "login.gohtml", err)
+
+			return err
+
 		}
 
 		if re.MatchString(email) == false {
 
-			return errors.New("Invalid Email format")
+			err := errors.New("Invalid Email format")
+			log.Println(err)
+
+			err = t.ExecuteTemplate(w, "login.gohtml", err)
+
+			return err
 		}
 
 		filter := bson.D{{"email", email}}
@@ -714,15 +888,18 @@ func login(w http.ResponseWriter, r *http.Request) error {
 		err := collection.FindOne(ctx, filter).Decode(&result)
 
 		if err != nil {
+			log.Println(err)
+
+			err := errors.New("User is Not registered")
 
 			err = t.ExecuteTemplate(w, "login.gohtml", err)
 			return err
 		}
 
 		err = bcrypt.CompareHashAndPassword(result.Psw, []byte(pass))
-		fmt.Println(result.Psw, []byte(pass), err)
 
 		if err != nil {
+			log.Println(err)
 			err = errors.New("Password is not correct")
 			err = t.ExecuteTemplate(w, "login.gohtml", err)
 			return err
@@ -739,6 +916,49 @@ func login(w http.ResponseWriter, r *http.Request) error {
 			}
 			http.SetCookie(w, c)
 
+		}
+
+		var user models.Uuid
+
+		email = r.FormValue("email")
+
+		filter = bson.D{{"email", email}}
+
+		collection = client.Database("test").Collection("UUID")
+
+		err = collection.FindOne(ctx, filter).Decode(&user)
+
+		if err != nil {
+			log.Println(err)
+			err := errors.New("User is Not registered")
+
+			err = t.ExecuteTemplate(w, "login.gohtml", err)
+			return err
+		}
+
+		userid := user.Uuid
+		fname := user.Fname
+		posttime := time.Now()
+		login := true
+
+		namespace, _ := uuid.NewRandom()
+
+		sessionid := uuid.NewSHA1(namespace, []byte(email))
+
+		type ses models.Sessions
+
+		session := ses{SessionId: sessionid.String(), Fname: fname, Uuid: userid, Email: email, Cookies: c.String(), Posttime: posttime, LoggedIn: login}
+
+		collection = client.Database("test").Collection("Sessions")
+
+		_, err = collection.InsertOne(ctx, session)
+
+		if err != nil {
+			log.Println(err)
+			err := errors.New("User is Not registered")
+
+			err = t.ExecuteTemplate(w, "login.gohtml", err)
+			return err
 		}
 
 		//http.Redirect(w, r, "/home", http.StatusSeeOther)
@@ -758,7 +978,8 @@ func CreateUser(w http.ResponseWriter, r *http.Request) error {
 
 		r.ParseForm()
 
-		uname := r.FormValue("email")
+		email := r.FormValue("email")
+		uname := r.FormValue("fname")
 
 		namespace, _ := uuid.NewRandom()
 
@@ -766,7 +987,7 @@ func CreateUser(w http.ResponseWriter, r *http.Request) error {
 
 		fmt.Println(uname + "" + UUID.String())
 
-		uuid := ud{Email: uname, Uuid: UUID.String()}
+		uuid := ud{Email: email, Fname: uname, Uuid: UUID.String()}
 
 		collection := client.Database("test").Collection("UUID")
 
@@ -774,6 +995,9 @@ func CreateUser(w http.ResponseWriter, r *http.Request) error {
 
 		if err != nil {
 			log.Println(err)
+			err := errors.New("Server Error")
+
+			err = t.ExecuteTemplate(w, "login.gohtml", err)
 			return err
 		}
 
@@ -782,6 +1006,10 @@ func CreateUser(w http.ResponseWriter, r *http.Request) error {
 		pass, err := bcrypt.GenerateFromPassword([]byte(r.FormValue("psw")), bcrypt.MinCost)
 
 		if err != nil {
+			log.Println(err)
+			err := errors.New("Server Error")
+
+			err = t.ExecuteTemplate(w, "login.gohtml", err)
 			return err
 		}
 
@@ -789,7 +1017,12 @@ func CreateUser(w http.ResponseWriter, r *http.Request) error {
 
 		_, err = collection.InsertOne(ctx, user)
 		if err != nil {
-			log.Fatal(err)
+			log.Println(err)
+			err := errors.New("Server Error")
+
+			err = t.ExecuteTemplate(w, "login.gohtml", err)
+
+			return err
 		}
 
 		io.WriteString(w, "Successfully registered")
@@ -843,6 +1076,8 @@ func (methods funcHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(status)
 	w.Write(body)
+	err = t.ExecuteTemplate(w, "login.gohtml", nil)
+
 }
 
 func init() {
